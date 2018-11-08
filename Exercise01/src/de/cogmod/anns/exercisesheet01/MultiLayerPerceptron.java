@@ -1,3 +1,9 @@
+// Advanced Neural Networks, exercise 1
+// Group:
+// Adrian Frank
+// Tobias Feuerecker
+
+
 package de.cogmod.anns.exercisesheet01;
 
 import java.util.Random;
@@ -171,7 +177,6 @@ public class MultiLayerPerceptron {
                     netj += this.act[l - 1][i] * this.weights[l][i][j];
                 }
                 //
-
                 this.net[l][j] = netj;
             }
             //
@@ -189,6 +194,9 @@ public class MultiLayerPerceptron {
     }
     
     
+    // ----------------------------------------------------------------------------------
+    
+    
     public void backwardPass(final double[] target) {
         //
         assert(target.length == this.act[this.act.length - 1].length);
@@ -198,24 +206,48 @@ public class MultiLayerPerceptron {
         // store into "back-flowing" inputs (deltas).
         //
         
-        // ...
-        
-        //
-        // back-propagate the error through the network -- we compute the deltas --
-        // starting with the output layer.
-        //
-
-        // ...
-        
-        
+        for (int l = this.layersnum - 1; l > 0; l--) {
+        	
+        	for (int n = 0; n < this.layer[l]; n++) {
+        		// extra handling for the output layer
+        		if (l == this.layersnum - 1) {
+        			double discrepancy = this.act[l][n] - target[n];
+        			this.delta[l][n] = sigmoidDx(this.net[l][n]) * discrepancy;
+        			
+        		} else {
+        			// hidden layer handling
+        			// sum up all the products of the weights from the following layer and the deltas from the following layer
+        			double sumdelta = 0;
+        			for (int k = 0; k < this.layer[l+1]; k++) {
+        				sumdelta += this.delta[l+1][k] * this.weights[l+1][n][k];
+        			}
+        			this.delta[l][n] = sigmoidDx(this.net[l][n]) * sumdelta;
+        		}
+        	}
+        }
         // 
         // Compute the weights derivatives.
         //
         // this.dweights !!!!
-        // ...
 
+        // iterate over all layers
+        for (int l = 1; l < this.layersnum; l++) {
+        	// iterate over neurons of previous layers
+			for (int i = 0; i < this.layer[l-1]; i++) {
+				// iterate over neurons of current layer
+				for (int j = 0; j < this.layer[l]; j++) {
+					// weights are updated by multiplying delta of current neuron with the activation of the corrsendponding neuron from the previous layer 
+					this.dweights[l][i][j] = this.delta[l][j]
+							* this.act[l-1][i];
+					if (this.usebias[l]) {
+						// the bias weight is the last element in the weights array of a layer -> thus this.layer[l-1]
+						this.dweights[l][this.layer[l-1]][j] = this.BIAS * this.delta[l][j];
+					}
+				}
+			}
+		}
     }
-    
+
     /**
      * Initializes the weights randomly and normal distributed with
      * std. dev. 0.1.
@@ -230,7 +262,7 @@ public class MultiLayerPerceptron {
             }
         }
     }
-    
+
     public int getWeightsNum() {
         return this.weightsnum;
     }
@@ -290,6 +322,7 @@ public class MultiLayerPerceptron {
     ) {
         //
         assert(input.length == target.length);
+        
         //
         final double[] weights           = new double[this.weightsnum];
         final double[] dweights          = new double[this.weightsnum];
@@ -303,15 +336,19 @@ public class MultiLayerPerceptron {
         for (int i = 0; i < indices.length; i++) {
             indices[i] = i;
         }
+        
+        
+        // temporary output; used to save the result from this.forwardPass()
+        double[] output_tmp;
+        
         //
         double error = Double.POSITIVE_INFINITY;
         //
-        // epoch loop.
+        // epoch epoch.
         //
         for (int i = 0; i < epochs; i++) {
-            //
+        	
             // shuffle indices.
-            //
             Tools.shuffle(indices, rnd);
             //
             double errorsum = 0.0;
@@ -320,10 +357,34 @@ public class MultiLayerPerceptron {
             // while considering the shuffled order and update the weights 
             // immediately after each sample
             //
-
-            // ...
+            for(int n = 0; n < input.length; n++) {
+            	
+            	this.readWeights(weights);
+            	
+            	// pass the input through the network
+            	output_tmp = this.forwardPass(input[indices[n]]);
+            	
+            	// execute a backward pass for every target
+            	this.backwardPass(target[indices[n]]);
+            	
+            	// read the derivatives of the weights into the array
+            	this.readDWeights(dweights);
+            	
+            	// compute the new weights
+            	for(int j = 0; j < this.weightsnum; j++) {
+            		weightsupdate[j] = -learningrate * dweights[j] + momentumrate * weightsupdate[j];
+            		weights[j] += weightsupdate[j];
+            	}
+            	
+            	// write the just computed weights in the network
+            	this.writeWeights(weights);
+            	
+            	// compute error for input:
+            	errorsum += RMSE(output_tmp, target[indices[n]]);
+            	
+            }
             
-            //
+            // average error in one epoch
             error = errorsum / (double)(input.length);
             if (listener != null) listener.afterEpoch(i + 1, error);
         }
