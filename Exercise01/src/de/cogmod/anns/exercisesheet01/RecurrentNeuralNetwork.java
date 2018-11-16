@@ -339,30 +339,43 @@ public class RecurrentNeuralNetwork {
             		 
             		 // extra handling for output layer
             		 if (l == this.layersnum - 1) {
-            			 // TODO: compute the output delta correctly as it has a linear activation function
-            			 this.delta[l][n][t] = this.bwbuffer[l][n][t] * (this.act[l][n][t]);
+            			 if (t_target >= 0) {
+            				 this.delta[l][n][t] = this.bwbuffer[l][n][t];
+            			 }
             		 } else {
             			 // integrate deltas for non-output layers.
             			 double sumdelta = 0;
             			 double sumdeltaRecurrent = 0;
 
-            			 // forward weights
-            			 for (int k = 0; k < this.weights[l][l+1].length; k++) {
-            				 for (int w = 0; w < this.weights[l][l+1][k].length; w++) {
-            					 sumdelta += this.weights[l][l+1][k][w] * this.delta[l+1][w][t];
-            				 }
+            			 for (int k = 0; k < this.layer[l+1]; k++) {
+            				 sumdelta += this.weights[l][l+1][n][k] * this.delta[l+1][k][t];
             			 }
+            			 
+            			 // forward weights
+//            			 for (int k = 0; k < this.weights[l][l+1].length; k++) {
+//            				 for (int w = 0; w < this.weights[l][l+1][k].length; w++) {
+//            					 sumdelta += this.weights[l][l+1][k][w] * this.delta[l+1][w][t];
+//            				 }
+//            			 }
             			 
             			 // recurrent weights
             			 
-            			 // if t = steps - 1 delta[l][for_all_n][t] is 0 by definition so sumdeltaRecurrent is also 0
-            			 if (t < (steps - 1)) {
-            				 for (int h = 0; h < this.weights[l][l].length; h++) {
-            					 for (int w = 0; w < this.weights[l][l][h].length; w++) {
-            						 sumdeltaRecurrent += this.weights[l][l][h][w] * this.delta[l][n][t+1];
-            					 }
+            			 for (int h = 0; h < this.layer[l]; h++) {
+            				 double delta = 0;
+            				 if (t != steps- 1) {
+            					 delta = this.delta[l][h][t+1];
             				 }
+            				 sumdeltaRecurrent += this.weights[l][l][n][h] * delta;
             			 }
+            			 
+            			 // if t = steps - 1 delta[l][for_all_n][t] is 0 by definition so sumdeltaRecurrent is also 0
+//            			 if (t < (steps-1)) {
+//            				 for (int h = 0; h < this.weights[l][l].length; h++) {
+//            					 for (int w = 0; w < this.weights[l][l][h].length; w++) {
+//            						 sumdeltaRecurrent += this.weights[l][l][h][w] * this.delta[l][n][t+1];
+//            					 }
+//            				 }
+//            			 }
             			 this.delta[l][n][t] = (sumdelta + sumdeltaRecurrent) * tanhDx(this.net[l][n][t]);
             			 
             		 }
@@ -559,12 +572,13 @@ public class RecurrentNeuralNetwork {
             //
             
             for (int j = 0; j < indices.length; j++) {
+            	this.reset();
             	double[][] output = this.forwardPass(input[j]);
             	
             	this.backwardPass(target[j]);
             	
             	this.readDWeights(dweights);
-            	System.out.println(dweights[dweights.length - 10]);
+            	
             	for (int w = 0; w < this.weightsnum; w++) {
             		weightsupdate[w] = -learningrate * dweights[w] + weightsupdate[w] * momentumrate;
             		weights[w] += weightsupdate[w];

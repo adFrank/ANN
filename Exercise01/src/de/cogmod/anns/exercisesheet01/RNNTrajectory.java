@@ -68,12 +68,19 @@ public class RNNTrajectory {
         // be deactivated using net.setBias(layer, false),
         // where layer gives the layer index (1 = is the first hidden layer).
         //
-        final RecurrentNeuralNetwork net = new RecurrentNeuralNetwork(1, 16, 2);
+        final RecurrentNeuralNetwork net = new RecurrentNeuralNetwork(1, 32, 16, 8,  2);
+        // BEST CONFIG: 1, 5, 5, 5, 2, 2, lr 0.0002, mom 0.7
         //
         // we disable all biases.
         //
         net.setBias(1, false);
         net.setBias(2, false);
+        net.setBias(3, false);
+       // net.setBias(4, false);
+//        net.setBias(5, false);
+//        net.setBias(6, false);
+//        net.setBias(7, false);
+//        net.setBias(8, false);
         //
         // perform training.
         //
