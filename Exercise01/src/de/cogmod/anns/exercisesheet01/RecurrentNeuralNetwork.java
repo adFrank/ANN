@@ -347,37 +347,20 @@ public class RecurrentNeuralNetwork {
             			 double sumdelta = 0;
             			 double sumdeltaRecurrent = 0;
 
+            			 // forward weights
             			 for (int k = 0; k < this.layer[l+1]; k++) {
             				 sumdelta += this.weights[l][l+1][n][k] * this.delta[l+1][k][t];
             			 }
-            			 
-            			 // forward weights
-//            			 for (int k = 0; k < this.weights[l][l+1].length; k++) {
-//            				 for (int w = 0; w < this.weights[l][l+1][k].length; w++) {
-//            					 sumdelta += this.weights[l][l+1][k][w] * this.delta[l+1][w][t];
-//            				 }
-//            			 }
-            			 
+
             			 // recurrent weights
-            			 
             			 for (int h = 0; h < this.layer[l]; h++) {
             				 double delta = 0;
-            				 if (t != steps- 1) {
+            				 if (t < ( steps- 1)) {
             					 delta = this.delta[l][h][t+1];
             				 }
             				 sumdeltaRecurrent += this.weights[l][l][n][h] * delta;
             			 }
-            			 
-            			 // if t = steps - 1 delta[l][for_all_n][t] is 0 by definition so sumdeltaRecurrent is also 0
-//            			 if (t < (steps-1)) {
-//            				 for (int h = 0; h < this.weights[l][l].length; h++) {
-//            					 for (int w = 0; w < this.weights[l][l][h].length; w++) {
-//            						 sumdeltaRecurrent += this.weights[l][l][h][w] * this.delta[l][n][t+1];
-//            					 }
-//            				 }
-//            			 }
             			 this.delta[l][n][t] = (sumdelta + sumdeltaRecurrent) * tanhDx(this.net[l][n][t]);
-            			 
             		 }
             		 
             	 }
@@ -392,15 +375,14 @@ public class RecurrentNeuralNetwork {
             //
             // compute weights derivatives between previous layer and current layer.
             //
-        	double sumDWeights = 0;
         	
         	for (int prevN = 0; prevN < this.layer[l - 1]; prevN++) {
         		for (int n = 0; n < this.layer[l]; n++) {
+        			double sumDWeights = 0;
         			for (int t = 0; t < steps; t++) {
         				sumDWeights += this.act[l-1][prevN][t] * this.delta[l][n][t];
         			}
         			this.dweights[l-1][l][prevN][n] = sumDWeights;
-        			sumDWeights = 0;
         		}
         	}
         	
@@ -408,11 +390,12 @@ public class RecurrentNeuralNetwork {
             //
             // compute weights derivatives between current layer and current layer.
             //
+
         	// No recurrent connections in outputlayer
         	if (l != outputlayer) {
-        		double sumDWeightsRecurrent = 0;
         		for(int n = 0; n < this.layer[l]; n++) {
         			for (int m = 0; m < this.layer[l]; m++) {
+        				double sumDWeightsRecurrent = 0;
         				for (int t = 0; t < steps; t++) {
         					double delta = 0;
         					// delta from output layer is 0
@@ -422,7 +405,6 @@ public class RecurrentNeuralNetwork {
         					sumDWeightsRecurrent += this.act[l][n][t] * delta;
         				}
         				this.dweights[l][l][n][m] = sumDWeightsRecurrent;
-        				sumDWeightsRecurrent = 0;
         			}
         		}
         		
@@ -432,15 +414,14 @@ public class RecurrentNeuralNetwork {
             //
             // compute weights derivatives between bias and current layer.
             //
-        	double sumDWeightBias = 0;
         	if (this.usebias[l]) {
         		int biasWeightIndex = this.weights[l-1].length - 1;
         		for (int j = 0; j < this.weights[l-1][l][biasWeightIndex].length; j++) {
+        			double sumDWeightBias = 0;
         			for (int t = 0; t < steps; t++) {
         				sumDWeightBias += this.BIAS * this.delta[l][j][t];
         			}
         			this.dweights[l-1][l][biasWeightIndex][j] = sumDWeightBias;
-        			sumDWeightBias = 0;
         		}
         	}
         	
