@@ -3,8 +3,10 @@ package de.cogmod.anns.spacecombat.rnn;
 import static de.cogmod.anns.spacecombat.rnn.ReservoirTools.map;
 import static de.cogmod.anns.spacecombat.rnn.ReservoirTools.multiply;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Random;
+
 
 import de.jannlab.optimization.BasicOptimizationListener;
 import de.jannlab.optimization.Objective;
@@ -19,6 +21,11 @@ public class EchoStateNetwork extends RecurrentNeuralNetwork {
     private double[][] inputweights;
     private double[][] reservoirweights;
     private double[][] outputweights;
+    
+    int numberOfWoutWeights;
+	int numberOfWfbWeights;
+	int numberOfWrecWeights;
+	int arity;
     
     public double[][] getInputWeights() {
         return this.inputweights;
@@ -42,6 +49,11 @@ public class EchoStateNetwork extends RecurrentNeuralNetwork {
         this.inputweights     = this.getWeights()[0][1];
         this.reservoirweights = this.getWeights()[1][1];
         this.outputweights    = this.getWeights()[1][2];
+        
+        numberOfWoutWeights = outputweights.length * outputweights[0].length;
+    	numberOfWfbWeights = inputweights.length * inputweights[0].length;
+    	numberOfWrecWeights = reservoirweights.length * reservoirweights[0].length;
+    	arity = numberOfWfbWeights + numberOfWrecWeights;
         //
     }
     
@@ -67,7 +79,7 @@ public class EchoStateNetwork extends RecurrentNeuralNetwork {
             result[i] = act[outputlayer][i][t];
         }
         //
-        return result;
+        return result; 
     }
     
     /**
@@ -81,7 +93,10 @@ public class EchoStateNetwork extends RecurrentNeuralNetwork {
         // this method causes an additional copy operation
         // but it is more readable from outside.
         //
-        final double[] output = this.output();
+        final double[] output = this.output().clone();
+        for(int i = 0; i < output.length; i++) {
+        	output[i] *= 1e-8;
+        }
         return this.forwardPass(output);
     }
     
@@ -111,93 +126,60 @@ public class EchoStateNetwork extends RecurrentNeuralNetwork {
         final int training,
         final int test
     ) {
-        //
-        // ESN training algorithm 
-        //
+
     	double[][][] act = this.getAct();
     	int outputlayer = this.getOutputLayer();
     	int hiddenlayer = outputlayer-1;
     	int numberOfHiddenNeurons = act[hiddenlayer].length;
     	int numberOfOutputNeurons = act[outputlayer].length;
     	
-    	// 1. washout 
-    	for (int t = 0; t < washout; t++) {
-    		
-    		// ignore output during washout
-    		this.forwardPassOscillator();
-    		
-    		double[] target = sequence[t];
-    		this.teacherForcing(target);
-    	}
+    	double[] finalBestWeights = new double[getWeightsNum()];
+    	readWeights(finalBestWeights);
     	
     	
-    	// 1. training with teacher forcing
+    	Objective objective = this.defineObjective(washout, training, sequence, hiddenlayer, numberOfHiddenNeurons, numberOfOutputNeurons);
+    	double[] bestDEWeights = evolutionaryOptimization(objective);
+    	double trainingError = objective.compute(bestDEWeights, 0);
     	
-    	// Activation matrix is of dimension timesteps x hidden units
-    	double[][] activationMatrix = new double[training][numberOfHiddenNeurons];
-    	
-    	// output matrix is of dimension timesteps x output units
-    	double[][] desiredOutputs = new double[training][numberOfOutputNeurons];
-    	
-    	// weight out matrix is of dimension (hidden units x output units) 
-    	double[][] weightOut = new double[numberOfHiddenNeurons][numberOfOutputNeurons];
-    	
-    	for (int i = 0; i < training; i++) {
-    		this.forwardPassOscillator();
-    		act = this.getAct();
+    	System.out.println("TRAINING ERROR: " + trainingError);
+    	double testError = 0.0;
+
+    	// test without teacher forcing
+    	for (int i = 0; i < test; i++) {
+    		double[] output = forwardPassOscillator();
+    		double[] target = sequence[i+washout+training];
     		
     		// iterate over reservoir
-    		for (int j = 0; j < act[hiddenlayer].length; j++) {
-    			// TODO: is index 0 correct here? Can time index be ignored?
-    			activationMatrix[i][j] = act[hiddenlayer][j][0];
+    		for (int j = 0; j < output.length; j++) {
+    			testError += Math.pow((output[j] - target[j]), 2);
     		}
-    		double[] target = sequence[i+washout];
-    		desiredOutputs[i] = target;
-    		this.teacherForcing(target);
     	}
-    	
-    	double trainingError = 0.0;
-    	
-    	
-    	if(ReservoirTools.solveSVD(activationMatrix, desiredOutputs, weightOut)) {
-    		// optimal weight out was successfully computed
-    		this.outputweights = weightOut;
-    		
-//    		int arity = (numberOfOutputNeurons + numberOfHiddenNeurons) * numberOfHiddenNeurons;
-//    		int flatWeightsIndexBoundary = numberOfOutputNeurons + numberOfHiddenNeurons;
-    		
-    		Objective objective = this.defineObjective(washout, training, numberOfHiddenNeurons, numberOfOutputNeurons, sequence);
-    		System.out.println(ReservoirTools.matrixAsString(evolutionaryOptimization(objective, numberOfHiddenNeurons, numberOfOutputNeurons)));
-    		
-    	} else {
-    		System.out.println("Ax = B could not be solved");
-    	}
-    	
-    	System.out.println("TRAIN ESN ERROR");
-    	System.out.println(trainingError / (numberOfOutputNeurons*training));
-    	// return MSE error
-    	return trainingError / (numberOfOutputNeurons*training);
+    	testError = Math.sqrt(testError / test);
+    	System.out.println("TEST ERROR: " + testError);
+        return testError;
     }
     
     
     private Objective defineObjective(
 		int washout,
 		int training,
+		double[][] sequence,
+		int hiddenlayer,
 		int numberOfHiddenNeurons,
-		int numberOfOutputNeurons,
-		double[][] sequence)
+		int numberOfOutputNeurons)
     {
     	
-    	// w_fb is a matrix of size output neurons x hidden neurons
+    	// w_fb is a matrix of size (output neurons + bias) x hidden neurons
     	// w_rec is a matrix of size hidden neurons x hidden neurons
+    	// w_out is a matrix of size (hidden neurons + bias) x output neurons
     	// thus, total matrix to optimize is of size (output + hidden) x hidden neurons
-    	
+    	// All weights except for the output weights should be determined by DE
     	
         final Objective objective = new Objective() {
             //
             @Override
             public int arity() {
-                return (numberOfOutputNeurons + numberOfHiddenNeurons) * numberOfHiddenNeurons;
+                return arity;
             }
             @Override
             /**
@@ -284,7 +266,7 @@ public class EchoStateNetwork extends RecurrentNeuralNetwork {
         //
         // for observing the optimization process.
         //
-        // optimizer.addListener(new BasicOptimizationListener());
+        optimizer.addListener(new BasicOptimizationListener());
         //
         optimizer.initialize();
         //
@@ -295,9 +277,82 @@ public class EchoStateNetwork extends RecurrentNeuralNetwork {
         // read the best solution.
         //
         final double[] solution = new double[f.arity()];
-        final double[][] output = new double[numberOfHiddenNeurons + numberOfOutputNeurons][numberOfHiddenNeurons];
         optimizer.readBestSolution(solution, 0);
-        map(solution, 0, output);
-        return output;
+        return solution;
+    }
+    
+    private double[][] computeOptimalOutputWeights(int washout, int training, int numberOfHiddenNeurons, int numberOfOutputNeurons, double[][] sequence, int hiddenlayer) {
+    	// washout 
+    	for (int t = 0; t < washout; t++) {
+    		
+    		// ignore output during washout
+    		forwardPassOscillator();
+    		
+    		double[] target = sequence[t];
+    		teacherForcing(target);
+    	}
+    	
+    	
+    	// 1. training with teacher forcing
+    	
+    	// Activation matrix is of dimension timesteps x hidden units
+    	double[][] activationMatrix = new double[training][numberOfHiddenNeurons];
+    	
+    	// output matrix is of dimension timesteps x output units
+    	double[][] desiredOutputs = new double[training][numberOfOutputNeurons];
+    	
+    	// weight out matrix is of dimension (hidden units x output units) 
+    	double[][] weightOut = new double[numberOfHiddenNeurons][numberOfOutputNeurons];
+    	
+    	for (int i = 0; i < training; i++) {
+    		forwardPassOscillator();
+    		double act[][][] = getAct();
+    		
+    		// iterate over reservoir
+    		for (int j = 0; j < act[hiddenlayer].length; j++) {
+    			// TODO: is index 0 correct here? Can time index be ignored?
+    			activationMatrix[i][j] = act[hiddenlayer][j][0];
+    		}
+    		double[] target = sequence[i+washout];
+    		desiredOutputs[i] = target;
+    		teacherForcing(target);
+    	}
+    	if (ReservoirTools.solveSVD(activationMatrix, desiredOutputs, weightOut)) {
+    		return weightOut;
+    	} else {
+    		System.out.println("Ax = B could not be solved");
+    		return weightOut;
+    	}
+    	
+    }
+    
+    private double getReservoirFitness(int washout, int training, double[][] sequence) {
+		//
+        // Evaluate current sample.
+        //
+        
+		// washout 
+    	for (int t = 0; t < washout; t++) {
+    		
+    		// ignore output during washout
+    		forwardPassOscillator();
+    		
+    		double[] target = sequence[t];
+    		teacherForcing(target);
+    	}
+    	
+    	double error = 0.0;
+
+    	// training without teacher forcing
+    	for (int i = 0; i < training; i++) {
+    		double[] output = forwardPassOscillator();
+    		double[] target = sequence[i+washout];
+    		
+    		// iterate over reservoir
+    		for (int j = 0; j < output.length; j++) {
+    			error += Math.pow((output[j] - target[j]), 2);
+    		}
+    	}
+        return Math.sqrt(error / training);
     }
 }

@@ -21,7 +21,7 @@ public class RecurrentNeuralNetwork {
     private int weightsnum;
     private int[] layer;
     private double[][][] net;
-    private double[][][] act;
+    public double[][][] act;
     private double[][][] bwbuffer;
     private double[][][] delta;
     private double[][][][] weights;
