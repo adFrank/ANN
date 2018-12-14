@@ -168,13 +168,6 @@ public class EchoStateNetwork extends RecurrentNeuralNetwork {
 		int numberOfHiddenNeurons,
 		int numberOfOutputNeurons)
     {
-    	
-    	// w_fb is a matrix of size (output neurons + bias) x hidden neurons
-    	// w_rec is a matrix of size hidden neurons x hidden neurons
-    	// w_out is a matrix of size (hidden neurons + bias) x output neurons
-    	// thus, total matrix to optimize is of size (output + hidden) x hidden neurons
-    	// All weights except for the output weights should be determined by DE
-    	
         final Objective objective = new Objective() {
             //
             @Override
@@ -193,66 +186,53 @@ public class EchoStateNetwork extends RecurrentNeuralNetwork {
                 // with the length that is given via arity(), namely, sizex.
                 //
             	
-            	// values contains the flattened array and is of size arity()
-            	// the input weights in this array range from 0 to output neurons * hidden neurons
-            	int numberOfInputWeights = numberOfOutputNeurons*numberOfHiddenNeurons;
-                final double[][] tentative_inputweights = new double[numberOfOutputNeurons][numberOfHiddenNeurons];
-                final double[] flatInputWeights = Arrays.copyOfRange(values, offset, offset+numberOfInputWeights);
-                map(flatInputWeights, 0, tentative_inputweights);
-                
-                // write tentative input weights
-                inputweights = tentative_inputweights; 
-                
-                
-                // the recurrent weights in this array range from output neurons * hidden neurons + 1 to end of values
-                int numberOfRecurrentWeights = numberOfHiddenNeurons*numberOfHiddenNeurons;
-                final double[][] tentative_recurrentweights = new double[numberOfHiddenNeurons][numberOfHiddenNeurons];
-                final double[] flatRecurrentWeights = Arrays.copyOfRange(values, offset+numberOfInputWeights, offset+numberOfInputWeights+numberOfRecurrentWeights);
-                map(flatRecurrentWeights, 0, tentative_recurrentweights);
-                
-                reservoirweights = tentative_recurrentweights;
-                
-                //
-                // Evaluate current sample.
-                //
-                
-        		// washout 
-            	for (int t = 0; t < washout; t++) {
-            		
-            		// ignore output during washout
-            		forwardPassOscillator();
-            		
-            		double[] target = sequence[t];
-            		teacherForcing(target);
-            	}
+            	// reset network activities to remove left overs from last generation
+            	reset();
             	
-            	double error = 0.0;
-
-            	// training without teacher forcing
-            	for (int i = 0; i < training; i++) {
-            		double[] output = forwardPassOscillator();
-            		double[] target = sequence[i+washout];
-            		
-            		// iterate over reservoir
-            		for (int j = 0; j < output.length; j++) {
-            			error += Math.pow((output[j] - target[j]), 2);
-            		}
-            	}
+            	// read in current weights
+                final double[] flatTotalWeights = new double[getWeightsNum()];
+                readWeights(flatTotalWeights);
+                final double[] flatOutputWeights = Arrays.copyOfRange(flatTotalWeights, arity, arity + numberOfWoutWeights); 
                 
-                return Math.sqrt( (1.0 / 1.5) * error);
+                // write evolutionary weights to network
+                double[] weightsToWrite = new double[getWeightsNum()];
+                for (int i = 0; i < arity; i++) {
+                	weightsToWrite[i] = values[i+offset];
+                }
+                writeWeights(weightsToWrite);
+                
+                // compute pseudo inverse to get optimal output weights
+                double[][] optimalOutputWeights = computeOptimalOutputWeights(washout, training, numberOfHiddenNeurons, numberOfOutputNeurons, sequence, hiddenlayer);
+
+                // flatten optimal output weights
+                int idx = 0;
+        		for (int i = 0; i < optimalOutputWeights.length; i++) {
+        			for (int j = 0; j < optimalOutputWeights[i].length; j++) {
+        				flatOutputWeights[idx++] = optimalOutputWeights[i][j];
+        			}
+        		}
+        		
+        		// write optimal output weights to network
+        		for (int i = 0; i < flatOutputWeights.length; i++) {
+                	weightsToWrite[i+arity] = flatOutputWeights[i];
+                }
+        		writeWeights(weightsToWrite);
+        		
+        		// evaluate current reservoir and return fitness signal
+        		return getReservoirFitness(washout, training, sequence);
             }
         };
         return objective;
     }
     
-    private double[][] evolutionaryOptimization(Objective f, int numberOfHiddenNeurons, int numberOfOutputNeurons) {
+    private double[] evolutionaryOptimization(Objective f) {
     	final DifferentialEvolution optimizer = new DifferentialEvolution();
         //
         // The same parameters can be used for reservoir optimization.
         //
         optimizer.setF(0.4);
         optimizer.setCR(0.6);
-        optimizer.setPopulationSize(10);
+        optimizer.setPopulationSize(5);
         optimizer.setMutation(Mutation.CURR2RANDBEST_ONE);
         //
         optimizer.setInitLbd(-0.1);
@@ -282,6 +262,7 @@ public class EchoStateNetwork extends RecurrentNeuralNetwork {
     }
     
     private double[][] computeOptimalOutputWeights(int washout, int training, int numberOfHiddenNeurons, int numberOfOutputNeurons, double[][] sequence, int hiddenlayer) {
+
     	// washout 
     	for (int t = 0; t < washout; t++) {
     		
@@ -292,9 +273,6 @@ public class EchoStateNetwork extends RecurrentNeuralNetwork {
     		teacherForcing(target);
     	}
     	
-    	
-    	// 1. training with teacher forcing
-    	
     	// Activation matrix is of dimension timesteps x hidden units
     	double[][] activationMatrix = new double[training][numberOfHiddenNeurons];
     	
@@ -304,13 +282,13 @@ public class EchoStateNetwork extends RecurrentNeuralNetwork {
     	// weight out matrix is of dimension (hidden units x output units) 
     	double[][] weightOut = new double[numberOfHiddenNeurons][numberOfOutputNeurons];
     	
+    	// training with teacher forcing
     	for (int i = 0; i < training; i++) {
     		forwardPassOscillator();
     		double act[][][] = getAct();
     		
-    		// iterate over reservoir
+    		// iterate over reservoir and save activations
     		for (int j = 0; j < act[hiddenlayer].length; j++) {
-    			// TODO: is index 0 correct here? Can time index be ignored?
     			activationMatrix[i][j] = act[hiddenlayer][j][0];
     		}
     		double[] target = sequence[i+washout];
@@ -348,7 +326,7 @@ public class EchoStateNetwork extends RecurrentNeuralNetwork {
     		double[] output = forwardPassOscillator();
     		double[] target = sequence[i+washout];
     		
-    		// iterate over reservoir
+    		// iterate over reservoir and sum up error
     		for (int j = 0; j < output.length; j++) {
     			error += Math.pow((output[j] - target[j]), 2);
     		}

@@ -22,10 +22,13 @@ public class AIMComputer implements SpaceSimulationObserver {
     	esn1 = new EchoStateNetwork(3, 40, 3);
     	esn2 = new EchoStateNetwork(3, 40, 3);
     	double[] trainedWeights = TrainESN.loadTrainedWeights();
+
+    	// Load in trained ESN
     	esn1.initializeWeights(new Random(1234), 0.1);
     	esn2.initializeWeights(new Random(1234), 0.1);
     	esn1.writeWeights(trainedWeights);
     	esn2.writeWeights(trainedWeights);
+    	
     	esn1.setBias(0, false);
     	esn1.setBias(1, false);
     	esn1.setBias(2, false);
@@ -60,64 +63,24 @@ public class AIMComputer implements SpaceSimulationObserver {
         }
     }
     
-    // maybe only required for dummy trajectory.
-    private Random rnd = new Random(1234);
 
-    private Vector3d[] generateDummyFutureProjection(final int timesteps) {
-        //
-        Vector3d last           = this.enemy.getRelativePosition();
-        final Vector3d dir      = new Vector3d();
-        final Vector3d[] result = new Vector3d[timesteps]; 
-        //
-        for (int t = 0; t < timesteps; t++) {
-            dir.x += rnd.nextGaussian() * 0.1;
-            dir.y += rnd.nextGaussian() * 0.1;
-            dir.z += rnd.nextGaussian() * 0.1;
-            //
-            Vector3d.normalize(dir, dir);
-            //
-            dir.x *= 1.0;
-            dir.y *= 1.0;
-            dir.z *= 1.0;
-            
-            final Vector3d current = Vector3d.add(last, dir);
-            result[t] = Vector3d.add(current, enemy.getOrigin());
-            last = current;
-        }
-        return result;
-    }
-    
-    private Vector3d[] generateFutureProjection(final int timesteps, double[][][] act) {
-        //
-        Vector3d last           = this.enemy.getRelativePosition();
-        final Vector3d dir      = new Vector3d();
-        final Vector3d[] result = new Vector3d[timesteps]; 
-        //
-        
-        for (int j = 0; j < act.length; j++) {
+
+    private Vector3d[] generateFutureProjection(final int timesteps) {
+
+    	final Vector3d[] result = new Vector3d[timesteps]; 
+
+    	// Copy activations from esn1 to esn2
+    	double[][][] act = esn1.getAct().clone();
+    	for (int j = 0; j < act.length; j++) {
         	for (int i = 0; i < act[j].length; i++) {
         		esn2.act[j][i][0] = act[j][i][0];
         	}
         }
-        // double output[] = esn2.forwardPassOscillator();
-        
-        
-        	// esn2.teacherForcing(currentPos);
-
+    	
+    	// predict trajectory
         for (int t = 0; t < timesteps; t++) {
         	double[] output = esn2.forwardPassOscillator();
-        	System.out.println(output[0]);
-            dir.x += (output[0]);
-            dir.y += (output[1]);
-            dir.z += (output[2]);
-            //System.out.println(dir.x);
-            //
-            Vector3d.normalize(dir, dir);
-            //
-
-            final Vector3d current = Vector3d.add(last, dir);
-            result[t] = Vector3d.add(current, enemy.getOrigin());
-            last = current;
+            result[t] = Vector3d.add(enemy.getOrigin(), new Vector3d(output[0], output[1], output[2]));
         }
         return result;
     }
@@ -130,10 +93,7 @@ public class AIMComputer implements SpaceSimulationObserver {
             //
             if (!this.targetlocked) return;
             
-            //
-            // update trajectory prediction RNN (teacher forcing)
-            //
-            final Vector3d enemyposition = sim.getEnemy().getPosition();
+
             final Vector3d enemyrelativepostion = sim.getEnemy().getRelativePosition();
             double[] currentPos = {
             	enemyrelativepostion.x,
@@ -141,23 +101,11 @@ public class AIMComputer implements SpaceSimulationObserver {
                 enemyrelativepostion.z
             };
             
-            double[] output = esn1.forwardPassOscillator();
-            // System.out.println(enemyrelativepostion.x + " | " + output[0]);
+            // ESN1 is in permanent washout state
+            esn1.forwardPassOscillator();
             esn1.teacherForcing(currentPos);
-            double[][][] act = esn1.getAct().clone();
-            // ...
-            //
-            // use copy of the RNN to generate future projection
-            //
-            this.enemytrajectoryprediction = this.generateFutureProjection(100, act);
-            
-            //
-            // will be later extended for missile control
-            //
-            
-            // 1. ESN dauer washout mit aktueller position des T-Fighters
-            // 2. ESN predicted die zukunft indem aktueller hidden state von ESN1 reingepackt wird und es die nächsten Werte voraussieht
-            
+
+            this.enemytrajectoryprediction = this.generateFutureProjection(100);
         }
 
     }
