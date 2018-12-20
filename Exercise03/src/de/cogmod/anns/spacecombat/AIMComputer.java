@@ -1,42 +1,28 @@
 package de.cogmod.anns.spacecombat;
 
-import java.util.Random;
+import java.util.List;
 
 import de.cogmod.anns.math.Vector3d;
-import de.cogmod.anns.spacecombat.examples.TeacherForcingExample;
+import de.cogmod.anns.spacecombat.AIMComputer;
+import de.cogmod.anns.spacecombat.EnemySpaceShip;
+import de.cogmod.anns.spacecombat.SpaceSimulation;
 import de.cogmod.anns.spacecombat.rnn.EchoStateNetwork;
-import de.cogmod.anns.spacecombat.rnn.TrainESN;
+import de.jannlab.io.Serializer;
 
 /**
  * @author Sebastian Otte
  */
 public class AIMComputer implements SpaceSimulationObserver {
 
+    public final static int PREDICTION_LENGTH = 100;
+    
     private EnemySpaceShip enemy        = null;
     private boolean        targetlocked = false;
     
     private Vector3d[] enemytrajectoryprediction;
-    private EchoStateNetwork esn1;
-    private EchoStateNetwork esn2;
     
-    public AIMComputer() {
-    	esn1 = new EchoStateNetwork(3, 40, 3);
-    	esn2 = new EchoStateNetwork(3, 40, 3);
-
-    	// Load in trained ESN weights
-    	// double[] trainedWeights = TrainESN.loadTrainedWeights();
-    	esn1.initializeWeights(new Random(1234), 0.1);
-    	esn2.initializeWeights(new Random(1234), 0.1);
-    	// esn1.writeWeights(trainedWeights);
-    	// esn2.writeWeights(trainedWeights);
-    	
-    	esn1.setBias(0, false);
-    	esn1.setBias(1, false);
-    	esn1.setBias(2, false);
-    	esn2.setBias(0, false);
-    	esn2.setBias(1, false);
-    	esn2.setBias(2, false);
-    }
+    private EchoStateNetwork enemyesn;
+    private EchoStateNetwork enemyesncopy;
     
     public Vector3d[] getEnemyTrajectoryPrediction() {
         return this.enemytrajectoryprediction;
@@ -61,56 +47,114 @@ public class AIMComputer implements SpaceSimulationObserver {
         synchronized (this) {
             this.enemy        = enemy;
             this.targetlocked = true;
+            this.enemyesn.reset();
         }
     }
     
-
-
-    private Vector3d[] generateFutureProjection(final int timesteps) {
-
-    	final Vector3d[] result = new Vector3d[timesteps]; 
-
-    	// Copy activations from esn1 to esn2
-    	double[][][] act = esn1.getAct().clone();
-    	for (int j = 0; j < act.length; j++) {
-        	for (int i = 0; i < act[j].length; i++) {
-        		esn2.act[j][i][0] = act[j][i][0];
-        	}
+    private Vector3d[] generateESNFutureProjection(final int timesteps) {
+        //
+        // copy current state of the online ESN into the projection ESN.
+        //
+        final double[][][] source = this.enemyesn.getAct();
+        final double[][][] dest   = this.enemyesncopy.getAct();
+        //
+        for (int l = 0; l < source.length; l++) {
+            if (source[l] != null) {
+                for (int i = 0; i < source[l].length; i++) {
+                    for (int t = 0; t < source[l][i].length; t++) {
+                        dest[l][i][t] = source[l][i][t];
+                    }
+                }
+            }
         }
-    	
-    	// predict trajectory
+        //
+        // perform projection.
+        //
+        final Vector3d[] result = new Vector3d[timesteps]; 
+        //
         for (int t = 0; t < timesteps; t++) {
-        	double[] output = esn2.forwardPassOscillator();
-            result[t] = Vector3d.add(enemy.getOrigin(), new Vector3d(output[0], output[1], output[2]));
+            final double[] output = this.enemyesncopy.forwardPassOscillator();
+            final Vector3d pos = new Vector3d(
+                output[0],
+                output[1],
+                output[2]
+            );
+            //
+            Vector3d.add(pos, this.enemy.getOrigin(), pos);
+            //
+            result[t] = pos;
         }
         return result;
     }
     
     @Override
     public void simulationStep(final SpaceSimulation sim) {
-    	
         //
         synchronized (this) {
             //
             if (!this.targetlocked) return;
-            
-
-            final Vector3d enemyrelativepostion = sim.getEnemy().getRelativePosition();
-            double[] currentPos = {
-            	enemyrelativepostion.x,
-                enemyrelativepostion.y,
-                enemyrelativepostion.z
+            //
+            // update trajectory prediction RNN (teacher forcing)
+            //
+            final Vector3d enemyrelativeposition = sim.getEnemy().getRelativePosition();
+            //
+            final double[] update = {
+                enemyrelativeposition.x,
+                enemyrelativeposition.y,
+                enemyrelativeposition.z
             };
-            
-            // ESN1 is in permanent washout state
-            esn1.forwardPassOscillator();
-            esn1.teacherForcing(currentPos);
-
-            this.enemytrajectoryprediction = this.generateFutureProjection(500);
+            //
+            this.enemyesn.forwardPassOscillator();
+            this.enemyesn.teacherForcing(update);
+            //
+            // use copy of the RNN to generate future projection
+            //
+            this.enemytrajectoryprediction = this.generateESNFutureProjection(PREDICTION_LENGTH);
+            //
+            // grab the most recently launched missile that is alive.
+            //
+            final Missile currentMissile = lastActiveMissile(sim);
+            //
+            // TODO: add missile control code here.
+            //
         }
-
     }
-	
     
-	
+    /**
+     * Returns the most recently launched missile within the simulation, but only
+     * if it is still "alive". Otherwise the method returns null. 
+     */
+    private Missile lastActiveMissile(final SpaceSimulation sim) {
+        final List<Missile> missiles = sim.getMissiles();
+        if (missiles.size() > 0) {
+            final Missile lastMissile = missiles.get(missiles.size() - 1);
+            if (!lastMissile.isLaunched()) {
+                return lastMissile;
+            }
+        }
+        return null;
+    }
+    
+    public AIMComputer() {
+        try {
+            //
+            // load esn.
+            //
+            final int reservoirsize = 30;
+            this.enemyesn     = new EchoStateNetwork(3, reservoirsize, 3);
+            this.enemyesncopy = new EchoStateNetwork(3, reservoirsize, 3);
+            //
+            final String weightsfile = (
+                "data/esn-3-" + 
+                reservoirsize + "-3.weights"
+            );
+            final double[] weights = Serializer.read(weightsfile);
+            //
+            this.enemyesn.writeWeights(weights);
+            this.enemyesncopy.writeWeights(weights);
+            //
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }   
 }

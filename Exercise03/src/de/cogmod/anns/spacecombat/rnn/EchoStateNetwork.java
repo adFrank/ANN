@@ -94,9 +94,6 @@ public class EchoStateNetwork extends RecurrentNeuralNetwork {
         // but it is more readable from outside.
         //
         final double[] output = this.output().clone();
-        for(int i = 0; i < output.length; i++) {
-        	output[i] *= 1e-8;
-        }
         return this.forwardPass(output);
     }
     
