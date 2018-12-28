@@ -96,6 +96,7 @@ public class AIMComputer implements SpaceSimulationObserver {
             //
             // update trajectory prediction RNN (teacher forcing)
             //
+            final Vector3d enemyabspos = sim.getEnemy().getPosition();
             final Vector3d enemyrelativeposition = sim.getEnemy().getRelativePosition();
             //
             final double[] update = {
