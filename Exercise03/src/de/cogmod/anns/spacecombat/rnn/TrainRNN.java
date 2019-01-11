@@ -40,13 +40,14 @@ public class TrainRNN {
 		}
         
         Random rnd = new Random(1234);
-        RecurrentNeuralNetwork rnn = new RecurrentNeuralNetwork(5, 20, 3);
+        RecurrentNeuralNetwork rnn = new RecurrentNeuralNetwork(5, 16, 8, 3);
         rnn.initializeWeights(rnd, 0.1);
         rnn.rebufferOnDemand((int)Missile.MAX_LIFETIME);
         rnn.setBias(0, false);
         rnn.setBias(1, false);
         rnn.setBias(2, false);
-        int epochs = 100;
+        rnn.setBias(3, false);
+        int epochs = 1000;
         double learningrate = 1e-6;
         double momentumrate = 0.9;
         rnn.trainStochastic(rnd, input, target, epochs, learningrate, momentumrate, new BasicLearningListener());

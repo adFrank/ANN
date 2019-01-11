@@ -24,6 +24,9 @@ public class AIMComputer implements SpaceSimulationObserver {
     private EchoStateNetwork enemyesn;
     private EchoStateNetwork enemyesncopy;
     
+    private Vector3d optimalTarget;
+    private boolean missileLaunched = false;
+    
     private MissileController mcon;
     
     public Vector3d[] getEnemyTrajectoryPrediction() {
@@ -120,9 +123,21 @@ public class AIMComputer implements SpaceSimulationObserver {
             // TODO: add missile control code here.
             //
             if (currentMissile != null) {
-            	double[] commandToApply =  mcon.optimizeMotorCommands(currentMissile, enemytrajectoryprediction);
-            	System.out.println(commandToApply[0] + " | " + commandToApply[1]);
+            	
+            	if(!missileLaunched) {
+            		missileLaunched = true;
+            		optimalTarget = mcon.findOptimalTarget(enemytrajectoryprediction, 0);
+            		if (optimalTarget == null) {
+            			optimalTarget = new Vector3d(0, -1, 150);
+            		}
+            	}
+            	
+            	double[] commandToApply =  mcon.optimizeMotorCommands(currentMissile, optimalTarget, enemyrelativeposition);
             	currentMissile.adjust(commandToApply[0], commandToApply[1]);
+            	Vector3d currentMissilePos = currentMissile.getPosition();
+            	// System.out.println(currentMissilePos.x + " | " + currentMissilePos.y + " | " + currentMissilePos.z);
+            } else {
+            	missileLaunched = false;
             }
         }
     }
