@@ -18,8 +18,6 @@ public class SpaceSimulationMain {
         //
         simgui.setVisible(true);
         simgui.start();
-        final RandomMissileTrajectories randomTraj = new RandomMissileTrajectories(sim, simgui);
-        //
     } 
     
 }

@@ -1,6 +1,7 @@
 package de.cogmod.anns.spacecombat;
 
 import de.cogmod.anns.math.Vector3d;
+import de.jannlab.math.MathTools;
 
 /**
  * @author Sebastian Otte
@@ -61,6 +62,14 @@ public class Missile {
         this.timetolive = MAX_LIFETIME;
     }
     
+    public double getAdjustX() {
+        return this.adjustx;
+    }
+    
+    public double getAdjustY() {
+        return this.adjusty;
+    }
+    
     public boolean isDestroyed() {
         return this.destroyed;
     }
@@ -78,8 +87,8 @@ public class Missile {
     }
     
     public void adjust(final double x, final double y) {
-        this.adjustx = x;
-        this.adjusty = y;
+        this.adjustx = MathTools.clamp(x, -1, 1);
+        this.adjusty = MathTools.clamp(y, -1, 1);
     }
     
     private double computeVel(

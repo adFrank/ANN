@@ -201,6 +201,126 @@ public class RecurrentNeuralNetwork {
         return forwardPass(new double[][]{input})[0];
     }
     
+    public double[][] recursiveForwardPass(final double[] initialMissileVel, double[][] input) {
+
+    	final int sequencelength = Math.min(this.bufferlength, input.length);
+        final double[][] output  = new double[sequencelength][];
+        final int outputlayer    = this.layersnum - 1;
+        //
+        int prevt = 0;
+        
+        //
+        for (int t = 0; t < sequencelength; t++) {
+            //
+            // store input.
+            //
+            assert(input.length == this.inputsize);
+            
+            // if in first time step, use initial missile velocity as input
+            if (t == 0) {
+            	for (int i = 0; i < initialMissileVel.length; i++) {
+                    this.act[0][i][t] = initialMissileVel[i];
+                }
+            // else use previous output as input (oscillator like)
+            } else {
+            	for (int i = 0; i < output[t-1].length; i++) {
+                    this.act[0][i][t] = output[t-1][i];
+                }
+            }
+
+            for (int i = 0; i < input[t].length; i++) {
+                this.act[0][i+initialMissileVel.length][t] = input[t][i];
+            }
+            //
+            // compute output layer-wise. start with the first
+            // hidden layer (or the outputlayer if there is no
+            // hidden layer).
+            //
+            for (int l = 1; l < this.layersnum; l++) {
+                //
+                // first compute all the net (integrate the inputs) values and activations.
+                //
+                final int layersize    = this.layer[l];
+                final int prelayersize = this.layer[l - 1];
+                //
+                //
+                final double[][] ff_weights = this.weights[l - 1][l];
+                final double[][] fb_weights = this.weights[l][l];
+                
+                //
+                for (int j = 0; j < layersize; j++) {
+                    //
+                    // eventually initialize netjt with the weighted bias.
+                    //
+                    double netjt = 0;
+                    //
+                    if (this.usebias[l]) {
+                        netjt = BIAS * ff_weights[prelayersize][j];
+                    }
+                    //
+                    // integrate feed-forward input.
+                    //
+                    for (int i = 0; i < prelayersize; i++) {
+                        netjt += this.act[l - 1][i][t] * ff_weights[i][j];
+                    }
+                    //
+                    if (l < outputlayer) {
+                        //
+                        // integrate recurrent input.
+                        //
+                        for (int i = 0; i < layersize; i++) {
+                            netjt += this.act[l][i][prevt] * fb_weights[i][j];
+                        }
+                    }
+                    //  
+                    this.net[l][j][t] = netjt;
+                }
+                //
+                // now we compute the activations of the neurons in the current layer.
+                //
+                if (l < outputlayer) {
+                    //
+                    // tanh hidden layer.
+                    //
+                    for (int j = 0; j < layersize; j++) {
+                        this.act[l][j][t] = tanh(this.net[l][j][t]);
+                    }    
+                } else {
+                    //
+                    // linear output layer.
+                    //
+                    for (int j = 0; j < layersize; j++) {
+                        this.act[l][j][t] = this.net[l][j][t];
+                    }    
+                }
+            }
+            //
+            // store output.
+            //
+            final int outputlayersize = this.layer[outputlayer];
+            //
+            output[t] = new double[outputlayersize];
+            //
+            for (int k = 0; k < outputlayersize; k++) {
+                output[t][k] = this.act[outputlayer][k][t];
+            }
+            if (t > 0) prevt = t;
+        }
+        //
+        // Store input length of the current sequence. You can 
+        // use this information in the backward pass, i.e., starting the
+        // back propagation through time procedure at this index,
+        // which can be smaller than the current buffer length
+        // depending on the current input sequence.
+        //
+        
+        this.lastinputlength = sequencelength;
+        //
+        // return output layer activation as output.
+        //
+        return output;
+    }
+    
     /**
      * Computes the forward pass, i.e., propagates a sequence
      * of input vectors through the network to the output layer.

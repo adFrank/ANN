@@ -24,6 +24,8 @@ public class AIMComputer implements SpaceSimulationObserver {
     private EchoStateNetwork enemyesn;
     private EchoStateNetwork enemyesncopy;
     
+    private MissileController mcon;
+    
     public Vector3d[] getEnemyTrajectoryPrediction() {
         return this.enemytrajectoryprediction;
     }
@@ -96,7 +98,6 @@ public class AIMComputer implements SpaceSimulationObserver {
             //
             // update trajectory prediction RNN (teacher forcing)
             //
-            final Vector3d enemyabspos = sim.getEnemy().getPosition();
             final Vector3d enemyrelativeposition = sim.getEnemy().getRelativePosition();
             //
             final double[] update = {
@@ -118,6 +119,11 @@ public class AIMComputer implements SpaceSimulationObserver {
             //
             // TODO: add missile control code here.
             //
+            if (currentMissile != null) {
+            	double[] commandToApply =  mcon.optimizeMotorCommands(currentMissile, enemytrajectoryprediction);
+            	System.out.println(commandToApply[0] + " | " + commandToApply[1]);
+            	currentMissile.adjust(commandToApply[0], commandToApply[1]);
+            }
         }
     }
     
@@ -129,7 +135,7 @@ public class AIMComputer implements SpaceSimulationObserver {
         final List<Missile> missiles = sim.getMissiles();
         if (missiles.size() > 0) {
             final Missile lastMissile = missiles.get(missiles.size() - 1);
-            if (!lastMissile.isLaunched()) {
+            if (lastMissile.isLaunched() && !lastMissile.isDestroyed()) {
                 return lastMissile;
             }
         }
@@ -154,6 +160,7 @@ public class AIMComputer implements SpaceSimulationObserver {
             this.enemyesn.writeWeights(weights);
             this.enemyesncopy.writeWeights(weights);
             //
+            mcon = new MissileController();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

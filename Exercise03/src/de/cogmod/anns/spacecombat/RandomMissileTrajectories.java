@@ -17,6 +17,8 @@ import java.util.regex.Pattern;
 import javax.swing.Timer;
 
 import de.cogmod.anns.math.Vector3d;
+import de.cogmod.anns.spacecombat.rnn.RecurrentNeuralNetwork;
+import de.cogmod.anns.spacecombat.rnn.TrainRNN;
 import de.cogmod.anns.spacecombat.rnn.TrajectorySample;
 
 public class RandomMissileTrajectories {

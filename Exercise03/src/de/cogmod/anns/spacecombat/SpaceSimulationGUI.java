@@ -464,19 +464,19 @@ public class SpaceSimulationGUI extends JFrame {
             @Override
             public void actionPerformed(final ActionEvent e) {
                 //
-                double rotx = 0.0;
-                double roty = 0.0;
-                //
-                if (keyup)    rotx -= 1.0;
-                if (keydown)  rotx += 1.0;
-                if (keyleft)  roty -= 1.0;
-                if (keyright) roty += 1.0;
-                //
                 if (
                     missile!= null && 
                     missile.isLaunched() && 
                     !missile.isDestroyed()
                 ) {
+                    double rotx = missile.getAdjustX();
+                    double roty = missile.getAdjustY();
+                    //
+                    if (keyup)    rotx -= 1.0;
+                    if (keydown)  rotx += 1.0;
+                    if (keyleft)  roty -= 1.0;
+                    if (keyright) roty += 1.0;
+                    //
                     missile.adjust(rotx, roty);
                 }
                 //
