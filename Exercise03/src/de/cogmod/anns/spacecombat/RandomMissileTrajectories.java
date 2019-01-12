@@ -23,13 +23,7 @@ import de.cogmod.anns.spacecombat.rnn.TrajectorySample;
 
 public class RandomMissileTrajectories {
 	
-	private SpaceSimulation sim;
-	private SpaceSimulationGUI simgui;
-	
-	public RandomMissileTrajectories(SpaceSimulation sim, SpaceSimulationGUI simgui) {
-		this.sim = sim;
-		this.simgui = simgui;
-		
+	public RandomMissileTrajectories(SpaceSimulation sim, SpaceSimulationGUI simgui) {	
 		
 		final double fps    = 30.0;
         final double dtmsec = 1000.0 / fps;
@@ -47,6 +41,7 @@ public class RandomMissileTrajectories {
             @Override
             public void actionPerformed(final ActionEvent e) {
             	List<Missile> missiles = sim.getMissiles();
+            	//  as soon as the previous missile has vanished, write motorcommands and velocity to file and launch a new missile
             	if (missiles.size() == 0) {
             		writeToFile(missileCoordinates, motorCommands);
             		missileCoordinates = new ArrayList<>();
@@ -59,7 +54,7 @@ public class RandomMissileTrajectories {
             	missileCoordinates.add(currCoords);
             	
             	framecount++;
-                //
+                // after actionRepeat frames, change motorcommands with probability 0.5
                 if (framecount % actionRepeat == 0) {
                 	framecount = 0;
                 	double p = rnd.nextDouble();
@@ -74,6 +69,7 @@ public class RandomMissileTrajectories {
                     missile.isLaunched() && 
                     !missile.isDestroyed()
                 ) {
+                	// apply random motor commands
                     missile.adjust(rotx, roty);
                     double[] cmds = new double[]{ rotx, roty};
                     motorCommands.add(cmds);
@@ -131,6 +127,7 @@ public class RandomMissileTrajectories {
 			while ((st = br.readLine()) != null) {
 			    
 			    String[] input_target = st.split(":");
+			    // System.out.println(input_target[0] + " " +number);
 			    Matcher matcher = Pattern.compile(pattern).matcher(input_target[0]);
 			    
 			    int idx = 0;
@@ -164,6 +161,7 @@ public class RandomMissileTrajectories {
     
     public static TrajectorySample[] getSavedSamples() {
     	int numberOfSamples = new File("data/missile_flights/").list().length;
+    	System.out.println(numberOfSamples);
     	TrajectorySample[] result = new TrajectorySample[numberOfSamples];
     	for (int i = 0; i < numberOfSamples; i++) {
     		result[i] = readTrajectoryFromFile(i+1);

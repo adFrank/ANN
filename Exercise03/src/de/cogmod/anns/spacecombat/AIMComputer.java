@@ -24,6 +24,8 @@ public class AIMComputer implements SpaceSimulationObserver {
     private EchoStateNetwork enemyesn;
     private EchoStateNetwork enemyesncopy;
     
+    private int lastMissileHashCode = -1;
+    
     private Vector3d optimalTarget;
     private boolean missileLaunched = false;
     
@@ -120,24 +122,30 @@ public class AIMComputer implements SpaceSimulationObserver {
             //
             final Missile currentMissile = lastActiveMissile(sim);
             //
-            // TODO: add missile control code here.
             //
+            
             if (currentMissile != null) {
+            	int currentMissileHashCode = currentMissile.hashCode();
             	
-            	if(!missileLaunched) {
+            	// compute optimal target only once a new missile was launched
+            	if(!missileLaunched || (lastMissileHashCode != currentMissileHashCode)) {
             		missileLaunched = true;
-            		optimalTarget = mcon.findOptimalTarget(enemytrajectoryprediction, 0);
+            		lastMissileHashCode = currentMissileHashCode;
+            		
+            		optimalTarget = mcon.findFirstReachableTarget(
+            				enemytrajectoryprediction, 
+            				50); // ignore the first 50 predicted target positions as they will be very likely out of reach in the given time
+            		// fire straight if no reachable target was found
             		if (optimalTarget == null) {
             			optimalTarget = new Vector3d(0, -1, 150);
             		}
             	}
-            	
-            	double[] commandToApply =  mcon.optimizeMotorCommands(currentMissile, optimalTarget, enemyrelativeposition);
+            	// optimize command and apply it to the missile
+            	double[] commandToApply =  mcon.optimizeMotorCommands(currentMissile, optimalTarget);
             	currentMissile.adjust(commandToApply[0], commandToApply[1]);
-            	Vector3d currentMissilePos = currentMissile.getPosition();
-            	// System.out.println(currentMissilePos.x + " | " + currentMissilePos.y + " | " + currentMissilePos.z);
             } else {
             	missileLaunched = false;
+            	lastMissileHashCode = -1;
             }
         }
     }

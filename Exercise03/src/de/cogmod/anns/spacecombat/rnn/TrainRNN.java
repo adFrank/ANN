@@ -20,11 +20,13 @@ public class TrainRNN {
 	final static double TRAINING_RATIO = 0.8;
 	
 	public static void main(String[] args) {
+		
+		// Load record missile flights
         TrajectorySample[] samples =  RandomMissileTrajectories.getSavedSamples();
         int numberOfTrainingSamples = (int)(samples.length * TRAINING_RATIO);
         int numberOfTestSamples = samples.length - numberOfTrainingSamples;
         
-        
+        // define training data
         double[][][] input = new double[numberOfTrainingSamples][][];
         double[][][] target = new double[numberOfTrainingSamples][][];
         for (int i = 0; i < target.length; i++) {
@@ -32,6 +34,7 @@ public class TrainRNN {
         	target[i] = samples[i].getTarget();
 		}
         
+        // define test data
         double[][][] input_test = new double[numberOfTestSamples][][];
         double[][][] target_test = new double[numberOfTestSamples][][];
         for (int i = 0; i < target_test.length; i++) {
@@ -39,6 +42,8 @@ public class TrainRNN {
         	target_test[i] = samples[i + numberOfTrainingSamples].getTarget();
 		}
         
+        
+        // Initialize RNN
         Random rnd = new Random(1234);
         RecurrentNeuralNetwork rnn = new RecurrentNeuralNetwork(5, 16, 8, 3);
         rnn.initializeWeights(rnd, 0.1);
@@ -47,12 +52,16 @@ public class TrainRNN {
         rnn.setBias(1, false);
         rnn.setBias(2, false);
         rnn.setBias(3, false);
+
+        // train and test RNN
         int epochs = 1000;
         double learningrate = 1e-6;
         double momentumrate = 0.9;
         rnn.trainStochastic(rnd, input, target, epochs, learningrate, momentumrate, new BasicLearningListener());
-        
         testRNN(rnn, input_test, target_test);
+        
+        
+        // save trained rnn weights in seperate file
         double[] weights = new double[rnn.getWeightsNum()];
         rnn.readWeights(weights);
         saveWeights(weights);

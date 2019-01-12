@@ -1,6 +1,9 @@
 package de.cogmod.anns.spacecombat.rnn;
 
 import java.util.List;
+/*
+ * This class holds an instance of one recorded missile flight
+ * */
 
 public class TrajectorySample {
 

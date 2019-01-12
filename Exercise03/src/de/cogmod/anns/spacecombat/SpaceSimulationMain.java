@@ -18,6 +18,9 @@ public class SpaceSimulationMain {
         //
         simgui.setVisible(true);
         simgui.start();
+        
+        // * UNCOMMENT NEXT LINE TO RECORD MORE RANDOM MISSILE FLIGHTS
+        // RandomMissileTrajectories rmt =  new RandomMissileTrajectories(sim, simgui);
     } 
     
 }
